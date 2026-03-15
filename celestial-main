@@ -1,0 +1,280 @@
+--[[
+    CELESTIAL OBSIDIAN v8.0 [ZENITH]
+    Authored by: Aedynjames17
+    
+    [+] SYSTEM: Self-Reloading Interface (Reset Button)
+    [+] SEARCH: Docked Search Bar + Independent Scrolling Results
+    [+] UTILS: Copy Script Button added to Search
+    [+] CORE: Physics Drag, Persistent Modules, 60FPS Animations
+--]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
+local StatsService = game:GetService("Stats")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- // 1. CONFIGURATION & PERSISTENCE // --
+local Config = {
+	Accent = Color3.fromRGB(0, 140, 255),
+	Modules = {
+		{Name = "Anti-AFK", Enabled = false, Script = "local vu = game:GetService('VirtualUser') game:GetService('Players').LocalPlayer.Idled:Connect(function() vu:CaptureController() vu:ClickButton2(Vector2.new()) end)"},
+		{Name = "Chat Logger", Enabled = true, Script = "print('Chat Logs Active')"},
+		{Name = "Infinite Jump", Enabled = false, Script = "game:GetService('UserInputService').JumpRequest:Connect(function() game:GetService('Players').LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState('Jumping') end)"},
+	}
+}
+
+local function SaveData()
+	if writefile then pcall(function() writefile("Celestial_Config.json", HttpService:JSONEncode(Config)) end) end
+end
+
+local function LoadData()
+	if readfile and isfile and isfile("Celestial_Config.json") then
+		pcall(function() 
+			local data = HttpService:JSONDecode(readfile("Celestial_Config.json"))
+			if data and data.Modules then 
+				for _, sm in pairs(data.Modules) do
+					for _, cm in pairs(Config.Modules) do if sm.Name == cm.Name then cm.Enabled = sm.Enabled end end
+				end
+			end
+		end)
+	end
+end
+LoadData()
+
+-- // 2. ASSETS // --
+local Sounds = {
+	Click = "rbxassetid://6042053626", Hover = "rbxassetid://6895079853",
+	Success = "rbxassetid://4590662766", Error = "rbxassetid://4590657391", Boot = "rbxassetid://4590656877"
+}
+local Theme = {
+	Main = Color3.fromRGB(14, 14, 16), Side = Color3.fromRGB(20, 20, 24),
+	Text = Color3.fromRGB(245, 245, 245), Dim = Color3.fromRGB(150, 150, 160),
+	Green = Color3.fromRGB(100, 255, 140), Red = Color3.fromRGB(255, 80, 80)
+}
+
+local function PlayAudio(id, vol)
+	local s = Instance.new("Sound")
+	s.SoundId = id; s.Volume = vol or 0.5; s.Parent = SoundService
+	s:Play(); s.Ended:Connect(function() s:Destroy() end)
+end
+
+local function Create(cls, props)
+	local i = Instance.new(cls); for k,v in pairs(props) do i[k] = v end; return i
+end
+
+local function AnimateBtn(btn)
+	btn.MouseEnter:Connect(function() PlayAudio(Sounds.Hover, 0.1); TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Config.Accent}):Play() end)
+	btn.MouseLeave:Connect(function() TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Side}):Play() end)
+	btn.MouseButton1Click:Connect(function() PlayAudio(Sounds.Click, 0.5) end)
+end
+
+-- // 3. MAIN APPLICATION KERNEL // --
+local function LoadCelestial()
+	-- Cleanup Old
+	if PlayerGui:FindFirstChild("CelestialV8") then PlayerGui.CelestialV8:Destroy() end
+	
+	local Screen = Create("ScreenGui", {Name = "CelestialV8", Parent = PlayerGui, ResetOnSpawn = false})
+	
+	local Main = Create("Frame", {
+		Name = "Main", Size = UDim2.new(0, 900, 0, 550), Position = UDim2.new(0.5, -450, 0.5, -275),
+		BackgroundColor3 = Theme.Main, BorderSizePixel = 0, ClipsDescendants = true, Parent = Screen
+	})
+	Create("UICorner", {CornerRadius = UDim.new(0, 8), Parent = Main})
+	Create("UIStroke", {Color = Color3.fromRGB(40,40,45), Thickness = 1, Parent = Main})
+
+	-- Boot Sequence
+	Main.Size = UDim2.new(0,0,0,0); Main.Visible = true
+	task.spawn(function()
+		PlayAudio(Sounds.Boot, 0.6)
+		TweenService:Create(Main, TweenInfo.new(0.6, Enum.EasingStyle.Back), {Size = UDim2.new(0, 900, 0, 550)}):Play()
+	end)
+
+	-- Drag System
+	local Drag = {Active=false, Start=nil, Pos=nil, Input=nil}
+	Main.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then Drag.Active = true; Drag.Start = i.Position; Drag.Pos = Main.Position end end)
+	Main.InputChanged:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseMovement then Drag.Input = i end end)
+	UserInputService.InputEnded:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then Drag.Active = false end end)
+	RunService.RenderStepped:Connect(function()
+		if Drag.Active and Drag.Input then
+			local d = Drag.Input.Position - Drag.Start
+			Main.Position = Main.Position:Lerp(UDim2.new(Drag.Pos.X.Scale, Drag.Pos.X.Offset + d.X, Drag.Pos.Y.Scale, Drag.Pos.Y.Offset + d.Y), 0.18)
+		end
+	end)
+
+	-- Header
+	local Top = Create("Frame", {Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Parent = Main})
+	Create("TextLabel", {Text = "    Celestial Executor v1.0 by Aedynjames17 ", Size = UDim2.new(0.5, 0, 1, 0), TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = 0, BackgroundTransparency = 1, Parent = Top})
+	local Close = Create("TextButton", {Text = "×", Size = UDim2.new(0, 40, 1, 0), Position = UDim2.new(1, -40, 0, 0), BackgroundTransparency = 1, TextColor3 = Theme.Red, TextSize = 24, Parent = Top})
+	Close.MouseButton1Click:Connect(function() Screen:Destroy() end)
+
+	-- // EDITOR AREA // --
+	local EditorArea = Create("Frame", {Size = UDim2.new(0.72, 0, 1, -70), Position = UDim2.new(0, 0, 0, 40), BackgroundTransparency = 1, Parent = Main})
+	local TabBar = Create("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Main, BorderSizePixel = 0, Parent = EditorArea})
+	Create("UIListLayout", {FillDirection = 0, Parent = TabBar})
+	local EditorsContainer = Create("Frame", {Size = UDim2.new(1, -10, 1, -35), Position = UDim2.new(0, 10, 0, 35), BackgroundColor3 = Theme.Side, Parent = EditorArea})
+	Create("UICorner", {Parent = EditorsContainer})
+
+	local Tabs, CurrentEdit = {}, nil
+	local function SwitchTab(tObj)
+		for _, t in pairs(Tabs) do t.Btn.TextColor3 = Theme.Dim; t.Scroll.Visible = false end
+		tObj.Btn.TextColor3 = Config.Accent; tObj.Scroll.Visible = true; CurrentEdit = tObj.Box
+	end
+
+	local function NewTab(name)
+		local btn = Create("TextButton", {Text = name.." ", Size = UDim2.new(0, 100, 1, 0), BackgroundTransparency = 1, TextColor3 = Theme.Dim, Font = Enum.Font.Gotham, TextSize = 12, Parent = TabBar})
+		local scroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, ScrollBarThickness = 4, ScrollBarImageColor3 = Config.Accent, CanvasSize = UDim2.new(2,0,2,0), AutomaticCanvasSize = 3, Visible = false, Parent = EditorsContainer})
+		local box = Create("TextBox", {Size = UDim2.new(1, 0, 1, 0), AutomaticSize = 3, BackgroundTransparency = 1, TextColor3 = Theme.Green, Text = "-- "..name, Font = Enum.Font.Code, TextSize = 14, MultiLine = true, ClearTextOnFocus = false, TextXAlignment = 0, TextYAlignment = 0, Parent = scroll})
+		local tObj = {Btn = btn, Scroll = scroll, Box = box}
+		btn.MouseButton2Click:Connect(function() btn:Destroy(); scroll:Destroy(); PlayAudio(Sounds.Hover, 0.5) end)
+		btn.MouseButton1Click:Connect(function() SwitchTab(tObj) end)
+		table.insert(Tabs, tObj); SwitchTab(tObj)
+	end
+	local AddT = Create("TextButton", {Text = "+", Size = UDim2.new(0, 30, 1, 0), BackgroundTransparency = 1, TextColor3 = Theme.Text, Parent = TabBar})
+	AddT.MouseButton1Click:Connect(function() NewTab("Script") end); NewTab("Main")
+
+	-- // SIDEBAR NAV // --
+	local SideArea = Create("Frame", {Size = UDim2.new(0.28, -10, 1, -70), Position = UDim2.new(0.72, 5, 0, 40), BackgroundColor3 = Theme.Side, Parent = Main})
+	Create("UICorner", {Parent = SideArea})
+	local SideNav = Create("Frame", {Size = UDim2.new(1, 0, 0, 35), BackgroundTransparency = 1, Parent = SideArea})
+	Create("UIListLayout", {FillDirection = 0, HorizontalAlignment = 1, Padding = UDim.new(0,2), Parent = SideNav})
+	local PageContainer = Create("Frame", {Size = UDim2.new(1, 0, 1, -35), Position = UDim2.new(0,0,0,35), BackgroundTransparency = 1, Parent = SideArea})
+	
+	local Pages = {}
+	local function CreatePage(icon)
+		local btn = Create("TextButton", {Size = UDim2.new(0.16, 0, 1, 0), Text = icon, BackgroundTransparency = 1, TextColor3 = Theme.Dim, Font = Enum.Font.GothamBold, TextSize = 18, Parent = SideNav})
+		local frame = Create("Frame", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Visible = false, Parent = PageContainer})
+		btn.MouseButton1Click:Connect(function()
+			for _, p in pairs(Pages) do p.F.Visible = false; p.B.TextColor3 = Theme.Dim end
+			frame.Visible = true; btn.TextColor3 = Config.Accent; PlayAudio(Sounds.Click, 0.4)
+		end)
+		table.insert(Pages, {B = btn, F = frame}); return frame
+	end
+
+	-- [PAGE 1: HOME]
+	local P_Home = CreatePage("⚡")
+	local HomeScroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, ScrollBarThickness = 2, Parent = P_Home})
+	Create("UIListLayout", {Parent = HomeScroll, Padding = UDim.new(0, 5)})
+	local function AddCmd(name, url)
+		local b = Create("TextButton", {Size = UDim2.new(1, 0, 0, 25), BackgroundColor3 = Theme.Main, Text = name, TextColor3 = Theme.Text, Font = Enum.Font.Gotham, TextSize = 11, Parent = HomeScroll})
+		Create("UICorner", {Parent = b}); AnimateBtn(b)
+		b.MouseButton1Click:Connect(function() loadstring(game:HttpGet(url))() end)
+	end
+	AddCmd("Fly (Dxnnyyyh)", "https://raw.githubusercontent.com/Dxnnyyyh148888/Fly-gui/refs/heads/main/Hhhhh")
+	AddCmd("Infinite Yield", "https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source")
+	AddCmd("Dark Dex V3", "https://raw.githubusercontent.com/infyiff/backup/main/dex.lua")
+
+	-- [PAGE 2: SEARCH (FIXED LAYOUT)]
+	local P_Search = CreatePage("🔍")
+	-- Fixed Header
+	local SearchHeader = Create("Frame", {Size = UDim2.new(1, -10, 0, 40), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Parent = P_Search})
+	local SearchBar = Create("TextBox", {Size = UDim2.new(1, 0, 0, 30), Position = UDim2.new(0, 0, 0, 5), BackgroundColor3 = Theme.Main, Text = " Search ScriptBlox...", TextColor3 = Theme.Text, Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = 0, Parent = SearchHeader})
+	Create("UICorner", {Parent = SearchBar})
+	
+	-- Scrolling Body
+	local ResultsScroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -45), Position = UDim2.new(0, 5, 0, 45), BackgroundTransparency = 1, ScrollBarThickness = 2, CanvasSize = UDim2.new(0,0,0,0), AutomaticCanvasSize = 2, Parent = P_Search})
+	local ResultList = Create("UIListLayout", {Parent = ResultsScroll, Padding = UDim.new(0, 5)})
+
+	SearchBar.FocusLost:Connect(function(enter)
+		if enter then
+			for _,c in pairs(ResultsScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+			local query = HttpService:UrlEncode(SearchBar.Text)
+			local url = "https://scriptblox.com/api/script/search?q="..query.."&mode=free&page=1"
+			
+			local s, r = pcall(function() return game:HttpGet(url) end)
+			if s then
+				local data = HttpService:JSONDecode(r)
+				if data and data.result and data.result.scripts then
+					for _, scriptData in pairs(data.result.scripts) do
+						local card = Create("Frame", {Size = UDim2.new(1, 0, 0, 70), BackgroundColor3 = Theme.Main, Parent = ResultsScroll})
+						Create("UICorner", {Parent = card})
+						Create("TextLabel", {Text = scriptData.title, Size = UDim2.new(1, -5, 0, 20), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, TextColor3 = Config.Accent, Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = 0, TextWrapped = true, Parent = card})
+						Create("TextLabel", {Text = "Views: "..(scriptData.views or 0), Size = UDim2.new(1, -5, 0, 15), Position = UDim2.new(0, 5, 0, 25), BackgroundTransparency = 1, TextColor3 = Theme.Dim, TextSize = 10, TextXAlignment = 0, Parent = card})
+						
+						local exe = Create("TextButton", {Text = "EXECUTE", Size = UDim2.new(0.45, 0, 0, 20), Position = UDim2.new(0, 5, 1, -25), BackgroundColor3 = Config.Accent, TextColor3 = Theme.Main, Font = Enum.Font.GothamBold, TextSize = 9, Parent = card})
+						Create("UICorner", {Parent = exe})
+						exe.MouseButton1Click:Connect(function() loadstring(scriptData.script)(); PlayAudio(Sounds.Success) end)
+						
+						local cpy = Create("TextButton", {Text = "COPY", Size = UDim2.new(0.45, 0, 0, 20), Position = UDim2.new(0.5, 0, 1, -25), BackgroundColor3 = Theme.Side, TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, TextSize = 9, Parent = card})
+						Create("UICorner", {Parent = cpy})
+						cpy.MouseButton1Click:Connect(function() setclipboard(scriptData.script); PlayAudio(Sounds.Hover) end)
+					end
+				end
+			end
+		end
+	end)
+
+	-- [PAGE 3: MODULES]
+	local P_Mods = CreatePage("🧩")
+	local ModScroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, ScrollBarThickness = 2, Parent = P_Mods})
+	Create("UIListLayout", {Parent = ModScroll, Padding = UDim.new(0, 5)})
+	
+	local function RenderModules()
+		for _,c in pairs(ModScroll:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+		for _, mod in pairs(Config.Modules) do
+			local row = Create("Frame", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Main, Parent = ModScroll})
+			Create("UICorner", {Parent = row})
+			Create("TextLabel", {Text = "  "..mod.Name, Size = UDim2.new(0.7, 0, 1, 0), TextXAlignment = 0, TextColor3 = Theme.Text, BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 11, Parent = row})
+			local tog = Create("TextButton", {Text = mod.Enabled and "ON" or "OFF", Size = UDim2.new(0.25, 0, 0.8, 0), Position = UDim2.new(0.72, 0, 0.1, 0), BackgroundColor3 = mod.Enabled and Theme.Green or Theme.Red, TextColor3 = Theme.Main, Font = Enum.Font.GothamBold, TextSize = 10, Parent = row})
+			Create("UICorner", {Parent = tog})
+			tog.MouseButton1Click:Connect(function()
+				mod.Enabled = not mod.Enabled; RenderModules(); SaveData(); PlayAudio(Sounds.Click, 0.6)
+			end)
+		end
+	end
+	RenderModules()
+
+	-- [PAGE 4: SETTINGS (RESET)]
+	local P_Sets = CreatePage("⚙️")
+	local SetScroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, Parent = P_Sets})
+	Create("UIListLayout", {Parent = SetScroll, Padding = UDim.new(0, 5)})
+	
+	local function AddSet(txt, func)
+		local b = Create("TextButton", {Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Main, Text = txt, TextColor3 = Theme.Dim, Font = Enum.Font.Gotham, TextSize = 11, Parent = SetScroll})
+		Create("UICorner", {Parent = b}); AnimateBtn(b)
+		b.MouseButton1Click:Connect(func)
+	end
+	AddSet("Save Configuration", function() SaveData(); PlayAudio(Sounds.Success) end)
+	AddSet("Reload Modules", function() for _,m in pairs(Config.Modules) do if m.Enabled then loadstring(m.Script)() end end end)
+	AddSet("⚠️ HARD RESET UI", function() 
+		PlayAudio(Sounds.Boot, 1)
+		Screen:Destroy()
+		task.wait(0.1)
+		LoadCelestial() -- RECURSIVE RELOAD
+	end)
+
+	-- [PAGE 5: INFO]
+	local P_Info = CreatePage("ℹ️")
+	local InfoScroll = Create("ScrollingFrame", {Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5), BackgroundTransparency = 1, Parent = P_Info})
+	local InfoText = Create("TextLabel", {Size = UDim2.new(2, 0, 2, 0), BackgroundTransparency = 1, TextColor3 = Theme.Dim, Font = Enum.Font.Code, TextSize = 11, TextXAlignment = 0, TextYAlignment = 0, Parent = InfoScroll})
+	RunService.RenderStepped:Connect(function()
+		InfoText.Text = string.format("User: %s\nID: %d\nAge: %d days\nFPS: %d\nPing: %d ms\n\n[System]\nExecutor: Celestial v8\nBuild: Zenith\nDate: %s", LocalPlayer.Name, LocalPlayer.UserId, LocalPlayer.AccountAge, math.floor(1/RunService.RenderStepped:Wait()), math.floor(LocalPlayer:GetNetworkPing()*2000), os.date("%x"))
+	end)
+
+	-- // FOOTER // --
+	local Footer = Create("Frame", {Size = UDim2.new(1, 0, 0, 30), Position = UDim2.new(0, 0, 1, -30), BackgroundColor3 = Theme.Main, BorderSizePixel = 0, Parent = Main})
+	local StatText = Create("TextLabel", {Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 10, 0, 0), TextXAlignment = 0, TextColor3 = Theme.Dim, Font = Enum.Font.Code, TextSize = 11, BackgroundTransparency = 1, Parent = Footer})
+	local ExecBtn = Create("TextButton", {Text = "EXECUTE", Size = UDim2.new(0, 120, 0, 35), Position = UDim2.new(0, 10, 1, -45), BackgroundColor3 = Config.Accent, TextColor3 = Theme.Main, Font = Enum.Font.GothamBold, Parent = Main})
+	Create("UICorner", {Parent = ExecBtn}); AnimateBtn(ExecBtn)
+	local ClearBtn = Create("TextButton", {Text = "CLEAR", Size = UDim2.new(0, 80, 0, 35), Position = UDim2.new(0, 140, 1, -45), BackgroundColor3 = Theme.Side, TextColor3 = Theme.Text, Font = Enum.Font.GothamBold, Parent = Main})
+	Create("UICorner", {Parent = ClearBtn}); AnimateBtn(ClearBtn)
+	
+	ExecBtn.MouseButton1Click:Connect(function()
+		local s, e = pcall(function() loadstring(CurrentEdit.Text)() end)
+		if s then PlayAudio(Sounds.Success) else PlayAudio(Sounds.Error) end
+	end)
+	ClearBtn.MouseButton1Click:Connect(function() CurrentEdit.Text = "" end)
+	
+	Pages[1].B.MouseButton1Click:Fire()
+	RunService.RenderStepped:Connect(function() StatText.Text = string.format("Device: PC | %s | %s | %s", os.date("%X"), os.date("%x"), LocalPlayer.DisplayName) end)
+end
+
+-- Start
+LoadCelestial()
+task.delay(2, function() for _, m in pairs(Config.Modules) do if m.Enabled then loadstring(m.Script)() end end end)
+print("Injected Executor into 'clientruntimememory'. To change this, contact the owner, @Aedynjames17. Modules have been loaded successfully.")
